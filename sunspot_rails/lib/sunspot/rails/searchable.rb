@@ -222,8 +222,12 @@ module Sunspot #:nodoc:
         #   # include the associated +author+ object when loading to index
         #   Post.index(:include => :author) 
         #
+        #   # Exponential backoff on failure
+        #   Post.index(:backoff => [1, 3, 30, 60, 300, 600])
+        #
         def solr_index(opts={})
-          options = { :batch_size => 500, :batch_commit => true, :include => self.sunspot_options[:include], :first_id => 0}.merge(opts)
+          options = { :batch_size => 500, :batch_commit => true, :include => self.sunspot_options[:include], :first_id => 0
+            }.merge(opts)
           unless options[:batch_size]
             Sunspot.index!(all(:include => options[:include]))
           else
@@ -231,15 +235,25 @@ module Sunspot #:nodoc:
             counter = 1
             record_count = count
             last_id = options[:first_id]
+            backoff = options[:backoff] && options[:backoff].dup
             while(offset < record_count)
-              solr_benchmark options[:batch_size], counter do
-                records = all(:include => options[:include], :conditions => ["#{table_name}.#{primary_key} > ?", last_id], :limit => options[:batch_size], :order => "#{table_name}.#{primary_key}")
-                Sunspot.index(records)
-                last_id = records.last.id
+              begin
+                solr_benchmark options[:batch_size], counter do
+                  records = all(:include => options[:include], :conditions => ["#{table_name}.#{primary_key} > ?", last_id], :limit => options[:batch_size], :order => "#{table_name}.#{primary_key}")
+                  Sunspot.index(records)
+                  last_id = records.last.id
+                end
+                Sunspot.commit if options[:batch_commit]
+                offset += options[:batch_size]
+                counter += 1
+                backoff = options[:backoff] && options[:backoff].dup # reset on success
+              rescue
+                if time = backoff && backoff.shift
+                  sleep time
+                else
+                  raise
+                end
               end
-              Sunspot.commit if options[:batch_commit]
-              offset += options[:batch_size]
-              counter += 1
             end
             Sunspot.commit unless options[:batch_commit]
           end
