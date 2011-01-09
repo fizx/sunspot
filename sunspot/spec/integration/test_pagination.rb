@@ -4,9 +4,10 @@ describe 'pagination' do
   before :all do
     Sunspot.remove_all
     @posts = (0..19).map do |i|
-      Post.new(:blog_id => i)
+      Post.new(:blog_id => i, :title => "#{i}yeah")
     end
     Sunspot.index(*@posts)
+    Sunspot.commit
   end
 
   it 'should return all by default' do
