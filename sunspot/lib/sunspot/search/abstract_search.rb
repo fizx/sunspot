@@ -158,7 +158,7 @@ module Sunspot
       def facet(name, dynamic_name = nil)
         if name
           if dynamic_name
-            @facets_by_name[:"#{name}:#{dynamic_name}"]
+            @facets_by_name[:"#{name}__#{dynamic_name}"]
           else
             @facets_by_name[name.to_sym]
           end
